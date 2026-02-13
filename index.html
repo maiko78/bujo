@@ -264,8 +264,8 @@
                 div.innerHTML = `
                     <div class="flex justify-between items-start mb-4">
                         <h3 class="font-bold text-lg">${proj.title}</h3>
-                        <button onclick="state.projects.splice(${pIdx}, 1); save();" class="text-red-200 text-xs">削除</button>
-                    </div>
+                        <button onclick="deleteProject(${pIdx})" class="text-red-200 text-xs">削除</button>
+                </div>
                     <div class="space-y-2 mb-4">
                         ${proj.tasks.map((t, tIdx) => `
                             <div class="flex items-center gap-3 text-sm ${t.completed ? 'opacity-30' : ''}">
@@ -281,6 +281,14 @@
             });
         }
 
+        // プロジェクト削除用の命令
+function deleteProject(pIdx) {
+    const projName = state.projects[pIdx].title; // プロジェクトの名前を取得
+    if (confirm(`プロジェクト「${projName}」を削除しますか？\n中身のタスクもすべて消えてしまいます。`)) {
+        state.projects.splice(pIdx, 1); // 指定した番号のプロジェクトを消す
+        save(); // 保存して画面を更新
+    }
+}
         function render() { renderDaily(); renderProjects(); }
         
         document.getElementById('todo-input').onkeypress = (e) => {
