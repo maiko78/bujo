@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Bujo Smart - Reliable Copy</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .dot-grid {
+            background-image: radial-gradient(#e5e7eb 1px, transparent 1px);
+            background-size: 20px 20px;
+            background-color: #fcfcfc;
+        }
+        .tab-active { border-bottom: 2px solid #1f2937; font-weight: bold; color: #1f2937; }
+        details summary::-webkit-details-marker { display:none; }
+        summary { list-style: none; outline: none; }
+    </style>
+</head>
+<body class="dot-grid min-h-screen font-sans text-gray-800 pb-32 overflow-x-hidden">
+
+    <nav class="flex justify-center gap-8 p-4 bg-white/90 backdrop-blur-md border-b sticky top-0 z-20">
+        <button onclick="switchTab('daily')" id="tab-daily" class="px-4 py-2 tab-active transition-all">Daily</button>
+        <button onclick="switchTab('projects')" id="tab-projects" class="px-4 py-2 text-gray-400 transition-all">Projects</button>
+    </nav>
+
+    <div class="max-w-md mx-auto p-6">
+        <div id="page-content">
+            <!-- --- デイリーページ --- -->
+            <section id="page-daily">
+                <div class="flex items-center justify-between mb-6">
+                    <button onclick="changeDate(-1)" class="p-2 text-gray-400">←</button>
+                    <h2 id="display-date" class="text-xl font-bold font-mono text-center">2026.02.13 FRI</h2>
+                    <button onclick="changeDate(1)" class="p-2 text-gray-400">→</button>
+                </div>
+
+                <div class="mb-6">
+                    <!-- IDを変更：確実にクリックイベントを拾うため -->
+                    <button id="copy-btn" onclick="copyWeeklyForAI()" class="w-full text-xs bg-gray-800 text-white py-4 rounded-xl shadow-lg active:scale-95 transition-transform flex items-center justify-center gap-2">
+                        <span>📊 AI分析用にコピー (実績ログ込)</span>
+                        <span id="copy-status" class="hidden text-green-400 font-bold">✓ Copied</span>
+                    </button>
+                </div>
+
+                <!-- プロジェクト・プルダウン -->
+                <div id="project-pulldowns" class="mb-8 space-y-2 text-sm"></div>
+
+                <div id="daily-log-container" class="space-y-4 pt-6 border-t border-gray-200"></div>
+            </section>
+
+            <!-- --- プロジェクトページ --- -->
+            <section id="page-projects" class="hidden">
+                <h2 class="text-2xl font-bold mb-6">Projects</h2>
+                <div class="mb-8 bg-white p-4 rounded-xl border border-gray-200">
+                    <input type="text" id="new-project-name" placeholder="新しいプロジェクト名..." class="w-full p-2 border-b border-gray-100 focus:outline-none mb-4 bg-transparent">
+                    <button onclick="addProject()" class="w-full bg-gray-100 py-2 rounded-lg font-bold text-sm">プロジェクトを作成</button>
+                </div>
+                <div id="projects-container" class="space-y-6"></div>
+            </section>
+        </div>
+    </div>
+
+    <!-- 入力バー -->
+    <div id="daily-input-bar" class="fixed bottom-0 left-0 right-0 p-4 bg-white/95 border-t z-20 shadow-2xl">
+        <div class="max-w-md mx-auto flex items-center gap-3">
+            <span class="text-xl w-6 text-center text-gray-300">○</span>
+            <input type="text" id="todo-input" placeholder="何か書く..." class="flex-1 p-2 focus:outline-none border-b border-gray-100 bg-transparent">
+        </div>
+    </div>
+
+    <script>
+        // --- 記号定義 ---
+        const TYPES = [
+            { symbol: '○', label: '未完了' },
+            { symbol: '●', label: '完了' },
+            { symbol: '×', label: '中止' },
+            { symbol: '→', label: '次の日へ移動' },
+            { symbol: '↑', label: 'プロジェクトへ移動' },
+            { symbol: '-', label: 'メモ' }
+        ];
+
+        let state = JSON.parse(localStorage.getItem('bujo_pro_v5')) || {
+            currentDate: new Date().toISOString().split('T')[0],
+            daily: {},
+            projects: []
+        };
+
+        function save() {
+            localStorage.setItem('bujo_pro_v5', JSON.stringify(state));
+            render();
+        }
+
+        function switchTab(tab) {
+            document.getElementById('page-daily').classList.toggle('hidden', tab !== 'daily');
+            document.getElementById('page-projects').classList.toggle('hidden', tab !== 'projects');
+            document.getElementById('daily-input-bar').classList.toggle('hidden', tab !== 'daily');
+            document.getElementById('tab-daily').className = `px-4 py-2 ${tab === 'daily' ? 'tab-active' : 'text-gray-400'}`;
+            document.getElementById('tab-projects').className = `px-4 py-2 ${tab === 'projects' ? 'tab-active' : 'text-gray-400'}`;
+        }
+
+        function changeDate(offset) {
+            const d = new Date(state.currentDate);
+            d.setDate(d.getDate() + offset);
+            state.currentDate = d.toISOString().split('T')[0];
+            save();
+        }
+
+        function renderDaily() {
+            const dateStr = state.currentDate;
+            document.getElementById('display-date').textContent = dateStr.replace(/-/g, '.');
+            const container = document.getElementById('daily-log-container');
+            container.innerHTML = '';
+            const logs = state.daily[dateStr] || [];
+            
+            logs.forEach((log, i) => {
+                const div = document.createElement('div');
+                div.className = "flex items-start gap-4";
+                const btn = document.createElement('button');
+                btn.className = `w-8 h-8 flex-shrink-0 flex items-center justify-center rounded-lg font-bold ${log.typeIndex === 1 ? 'bg-black text-white' : 'bg-gray-100 text-gray-500'}`;
+                btn.textContent = TYPES[log.typeIndex].symbol;
+                btn.onclick = () => {
+                    log.typeIndex = (log.typeIndex + 1) % TYPES.length;
+                    if(TYPES[log.typeIndex].symbol === '→') migrateToNextDay(log.text);
+                    save();
+                };
+                const textSpan = document.createElement('span');
+                textSpan.className = `flex-1 pt-1 ${log.typeIndex === 1 ? 'line-through text-gray-400' : ''}`;
+                textSpan.textContent = log.text;
+                div.appendChild(btn);
+                div.appendChild(textSpan);
+                container.appendChild(div);
+            });
+
+            const pulldownArea = document.getElementById('project-pulldowns');
+            pulldownArea.innerHTML = '';
+            state.projects.forEach((proj, pIdx) => {
+                const activeTasks = proj.tasks.filter(t => !t.completed);
+                if(activeTasks.length === 0) return;
+                const det = document.createElement('details');
+                det.className = "bg-white border border-gray-100 rounded-xl overflow-hidden shadow-sm mb-2";
+                det.innerHTML = `
+                    <summary class="p-3 flex justify-between items-center cursor-pointer">
+                        <span class="font-bold text-gray-600">${proj.title}</span>
+                        <span class="text-[10px] bg-gray-100 px-2 py-0.5 rounded-full">${activeTasks.length}</span>
+                    </summary>
+                    <div class="p-2 space-y-1 bg-gray-50/50">
+                        ${proj.tasks.map((t, tIdx) => !t.completed ? `
+                            <div class="flex items-center gap-3 p-2 hover:bg-white rounded-lg cursor-pointer" onclick="syncCompleteTask(${pIdx}, ${tIdx})">
+                                <span class="text-gray-300">○</span>
+                                <span class="text-gray-600">${t.text}</span>
+                            </div>
+                        ` : '').join('')}
+                    </div>
+                `;
+                pulldownArea.appendChild(det);
+            });
+        }
+
+        function syncCompleteTask(pIdx, tIdx) {
+            const proj = state.projects[pIdx];
+            const task = proj.tasks[tIdx];
+            task.completed = true;
+            const ds = state.currentDate;
+            if(!state.daily[ds]) state.daily[ds] = [];
+            state.daily[ds].push({ text: `${proj.title} - ${task.text}`, typeIndex: 1 });
+            save();
+        }
+
+        function migrateToNextDay(text) {
+            const d = new Date(state.currentDate);
+            d.setDate(d.getDate() + 1);
+            const target = d.toISOString().split('T')[0];
+            if(!state.daily[target]) state.daily[target] = [];
+            if(!state.daily[target].some(l => l.text === text)) {
+                state.daily[target].push({ text: text, typeIndex: 0 });
+            }
+        }
+
+        // --- 改良版コピー機能 ---
+        async function copyWeeklyForAI() {
+            let legend = "【記号凡例】\n" + TYPES.map(t => `${t.symbol}: ${t.label}`).join('\n') + "\n\n";
+            let content = "【活動ログ（直近7日間）】\n\n";
+            const d = new Date(state.currentDate);
+            for(let i=0; i<7; i++) {
+                const target = new Date(d);
+                target.setDate(d.getDate() - (6 - i));
+                const ds = target.toISOString().split('T')[0];
+                const logs = state.daily[ds] || [];
+                content += `■ ${ds}\n` + (logs.length ? logs.map(l => `${TYPES[l.typeIndex].symbol} ${l.text}`).join('\n') : "(ログなし)") + "\n\n";
+            }
+            const finalOutput = legend + content;
+
+            // 1. まず modern API で試行
+            if (navigator.clipboard && window.isSecureContext) {
+                try {
+                    await navigator.clipboard.writeText(finalOutput);
+                    return showSuccess();
+                } catch (e) {}
+            }
+
+            // 2. 失敗した場合は textarea を作る伝統的手法
+            const textArea = document.createElement("textarea");
+            textArea.value = finalOutput;
+            textArea.style.position = "fixed"; 
+            textArea.style.left = "-9999px";
+            textArea.style.top = "0";
+            document.body.appendChild(textArea);
+            textArea.focus();
+            textArea.select();
+            try {
+                const successful = document.execCommand('copy');
+                if (successful) showSuccess();
+            } catch (err) {
+                // 3. 最終手段：プロンプト表示
+                window.prompt("コピーに失敗しました。以下のテキストを全選択してコピーしてください：", finalOutput);
+            }
+            document.body.removeChild(textArea);
+        }
+
+        function showSuccess() {
+            const status = document.getElementById('copy-status');
+            status.classList.remove('hidden');
+            setTimeout(() => status.classList.add('hidden'), 2000);
+        }
+
+        // --- プロジェクト管理 ---
+        function addProject() {
+            const input = document.getElementById('new-project-name');
+            if(!input.value) return;
+            state.projects.push({ id: Date.now(), title: input.value, tasks: [] });
+            input.value = '';
+            save();
+        }
+
+        function renderProjects() {
+            const container = document.getElementById('projects-container');
+            container.innerHTML = '';
+            state.projects.forEach((proj, pIdx) => {
+                const div = document.createElement('div');
+                div.className = "bg-white p-5 rounded-2xl border border-gray-100 shadow-sm";
+                div.innerHTML = `
+                    <div class="flex justify-between items-start mb-4">
+                        <h3 class="font-bold text-lg">${proj.title}</h3>
+                        <button onclick="state.projects.splice(${pIdx}, 1); save();" class="text-red-200 text-xs">削除</button>
+                    </div>
+                    <div class="space-y-2 mb-4">
+                        ${proj.tasks.map((t, tIdx) => `
+                            <div class="flex items-center gap-3 text-sm ${t.completed ? 'opacity-30' : ''}">
+                                <input type="checkbox" ${t.completed ? 'checked' : ''} onclick="state.projects[${pIdx}].tasks[${tIdx}].completed = !state.projects[${pIdx}].tasks[${tIdx}].completed; save();">
+                                <span class="${t.completed ? 'line-through' : ''}">${t.text}</span>
+                            </div>
+                        `).join('')}
+                    </div>
+                    <input type="text" placeholder="+ タスク追加..." class="w-full text-sm p-2 bg-gray-50 rounded-lg focus:outline-none"
+                        onkeypress="if(event.key==='Enter'){ state.projects[${pIdx}].tasks.push({text:this.value, completed:false}); save(); }">
+                `;
+                container.appendChild(div);
+            });
+        }
+
+        function render() { renderDaily(); renderProjects(); }
+        
+        document.getElementById('todo-input').onkeypress = (e) => {
+            if(e.key === 'Enter' && e.target.value) {
+                const ds = state.currentDate;
+                if(!state.daily[ds]) state.daily[ds] = [];
+                state.daily[ds].push({ text: e.target.value, typeIndex: 0 });
+                e.target.value = '';
+                save();
+            }
+        };
+
+        let startX = 0;
+        document.addEventListener('touchstart', e => startX = e.touches[0].pageX);
+        document.addEventListener('touchend', e => {
+            let diff = startX - e.changedTouches[0].pageX;
+            if(Math.abs(diff) > 100) changeDate(diff > 0 ? 1 : -1);
+        });
+
+        render();
+    </script>
+</body>
+</html>
