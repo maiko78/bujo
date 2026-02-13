@@ -1,6 +1,6 @@
 {
-  "name": "アプリの名前",
-  "short_name": "アプリ略称",
+  "name": "bujo",
+  "short_name": "bujo",
   "start_url": "./index.html",
   "display": "standalone",
   "background_color": "#ffffff",
