@@ -20,6 +20,20 @@
         .tab-active { border-bottom: 2px solid #1f2937; font-weight: bold; color: #1f2937; }
         details summary::-webkit-details-marker { display:none; }
         summary { list-style: none; outline: none; }
+        /* 右からスッと出てくる動き */
+@keyframes slideInRight {
+    from { transform: translateX(50px); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
+}
+
+/* 左からスッと出てくる動き */
+@keyframes slideInLeft {
+    from { transform: translateX(-50px); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
+}
+
+.animate-slide-right { animation: slideInRight 0.3s ease-out; }
+.animate-slide-left { animation: slideInLeft 0.3s ease-out; }
     </style>
 </head>
 <body class="dot-grid min-h-screen font-sans text-gray-800 pb-32 overflow-x-hidden">
@@ -104,12 +118,28 @@
         }
 
         function changeDate(offset) {
-            const d = new Date(state.currentDate);
-            d.setDate(d.getDate() + offset);
-            state.currentDate = d.toISOString().split('T')[0];
-            save();
-        }
+    const container = document.getElementById('page-daily');
+    
+    // 一度アニメーション用の名前（クラス）を消す（連続で押した時のため）
+    container.classList.remove('animate-slide-right', 'animate-slide-left');
+    
+    // 画面の「強制リセット」というおまじない
+    void container.offsetWidth; 
 
+    // 日付を計算
+    const d = new Date(state.currentDate);
+    d.setDate(d.getDate() + offset);
+    state.currentDate = d.toISOString().split('T')[0];
+
+    // 右にめくったか左にめくったかで、動きの種類を付ける
+    if (offset > 0) {
+        container.classList.add('animate-slide-right');
+    } else {
+        container.classList.add('animate-slide-left');
+    }
+
+    save();
+}
         function renderDaily() {
             const dateStr = state.currentDate;
             document.getElementById('display-date').textContent = dateStr.replace(/-/g, '.');
